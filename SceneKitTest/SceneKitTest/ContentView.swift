@@ -8,8 +8,6 @@
 import SwiftUI
 import SceneKit
 import CoreGraphics
-import SwiftUI
-import SceneKit
 
 struct ContentView: View {
 	
@@ -24,13 +22,15 @@ struct ContentView: View {
 		ZStack{
 			VStack{
 				SceneView(
-					scene: model.scene,
+					scene: model.myScene,
 					pointOfView: model.cameraNode,
 					options: [
-						//.rendersContinuously
-					]
+						.rendersContinuously
+					],
+					delegate: model
 				)
-			}.onHover {isMouseIn in
+			}
+			.onHover {isMouseIn in
 				mouseLocX = mouseLocation.x
 				mouseLocY = mouseLocation.y
 				isOverContentView = isMouseIn
@@ -40,13 +40,9 @@ struct ContentView: View {
 					//Key events
 					NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) {
 						event in
+						if event.isARepeat { return nil }
 						let pressedChar = event.charactersIgnoringModifiers!
-						print(pressedChar)
-						var currentPosition = model.cameraNode!.position
-						let forwardVector: simd_float3 = model.cameraNode!.simdWorldFront
-						let backwardVector = -forwardVector
-						let rightVector: simd_float3 = model.cameraNode!.simdWorldRight
-						let leftVector: simd_float3 = -rightVector
+						//print(pressedChar)
 						func addSimdToSCN3(_ scn: SCNVector3, _ simd: simd_float3) -> SCNVector3 {
 							var result = scn
 							result.x += CGFloat(simd.x)
@@ -56,25 +52,43 @@ struct ContentView: View {
 						}
 						switch pressedChar {
 						case "w":
-							currentPosition = addSimdToSCN3(currentPosition, forwardVector * model.movementSpeed)
+							model.cameraForwardSpeed += model.movementSpeed
 						case "s":
-							currentPosition = addSimdToSCN3(currentPosition, backwardVector * model.movementSpeed)
+							model.cameraForwardSpeed -= model.movementSpeed
 						case "a":
-							currentPosition = addSimdToSCN3(currentPosition, leftVector * model.movementSpeed)
+							model.cameraRightSpeed -= model.movementSpeed
 						case "d":
-							currentPosition = addSimdToSCN3(currentPosition, rightVector * model.movementSpeed)
+							model.cameraRightSpeed += model.movementSpeed
 						//case "q":
 							//exit(0)
 						default:
 							return nil
 						}
-						model.cameraNode!.position = currentPosition
+						return nil
+					}
+					
+					NSEvent.addLocalMonitorForEvents(matching: [.keyUp]) {
+						event in
+						if event.isARepeat { return nil }
+						let pressedChar = event.charactersIgnoringModifiers!
+						switch pressedChar {
+						case "w":
+							model.cameraForwardSpeed -= model.movementSpeed
+						case "s":
+							model.cameraForwardSpeed += model.movementSpeed
+						case "a":
+							model.cameraRightSpeed += model.movementSpeed
+						case "d":
+							model.cameraRightSpeed -= model.movementSpeed
+						default:
+							return nil
+						}
 						return nil
 					}
 					
 					//Mouse events
 					NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) {
-						print("\(isOverContentView ? "Mouse inside ContentView" : "Not inside Content View") x: \(self.mouseLocation.x) y: \(self.mouseLocation.y)")
+						//print("\(isOverContentView ? "Mouse inside ContentView" : "Not inside Content View") x: \(self.mouseLocation.x) y: \(self.mouseLocation.y)")
 						
 						var translation: CGPoint = mousePreviousLocation
 						translation.x -= mouseLocation.x
@@ -116,15 +130,32 @@ struct ContentView: View {
 	}
 }
 
-class Model: ObservableObject {
-	@Published var scene: SCNScene?
+class Model: NSObject, ObservableObject, SCNSceneRendererDelegate {
+	@Published var myScene: SCNScene?
 	@Published var cameraNode: SCNNode?
-	@Published var movementSpeed: Float = 0.5
+	@Published var movementSpeed: Float = 0.1
 	@Published var rotationSpeed: Float = 2.0
+	@Published var cameraForwardSpeed: Float = 0
+	@Published var cameraRightSpeed: Float = 0
 	
-	init() {
-		scene = SCNScene(named: "SceneKit Scene.scn")
-		cameraNode = scene?.rootNode.childNode(withName: "camera", recursively: false)
+	override init() {
+		super.init()
+		myScene = SCNScene(named: "SceneKit Scene.scn")
+		cameraNode = myScene?.rootNode.childNode(withName: "camera", recursively: false)
+	}
+	
+	func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+		
+		let forwardVector: simd_float3 = cameraNode!.simdWorldFront
+		let backwardVector = -forwardVector
+		let rightVector: simd_float3 = cameraNode!.simdWorldRight
+		let leftVector: simd_float3 = -rightVector
+		
+		cameraNode!.position.x =  cameraNode!.position.x + CGFloat(forwardVector.x) * CGFloat(cameraForwardSpeed) + CGFloat(rightVector.x) * CGFloat(cameraRightSpeed)
+		cameraNode!.position.y =  cameraNode!.position.y + CGFloat(forwardVector.y) * CGFloat(cameraForwardSpeed) + CGFloat(rightVector.y) * CGFloat(cameraRightSpeed)
+		cameraNode!.position.z =  cameraNode!.position.z + CGFloat(forwardVector.z) * CGFloat(cameraForwardSpeed) + CGFloat(rightVector.z) * CGFloat(cameraRightSpeed)
+		
+		
 	}
 }
 
